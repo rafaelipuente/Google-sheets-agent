@@ -50,7 +50,7 @@ python -m sheets_agent.cli whoami
 Data tier: `get_sheet_structure`, `read_range`, `update_cells`, `append_row`.
 Schema tier: `add_column`, `remove_column` (confirm-gated), `rename_column`,
 `set_column_validation`. Plus `clean_placeholders` for trustworthy, audited
-placeholder normalization.
+placeholder normalization. Every call is metered (see Observability below).
 
 Two rules: name-to-index resolution lives in the tool layer (never the model),
 and the agent re-reads structure after every structural change so writes never
@@ -88,11 +88,31 @@ date I applied after Role", "standardize my statuses", "clean up my tracker",
   `N/A` to `Not started`, clears Rejection Reason `N/A`, and returns an audit of
   exactly how many cells changed per column.
 
+## Observability (cost, LLM calls, tool usage)
+
+Every agent turn records its LLM calls (model, token usage, cost, latency) and
+each tool call (duration, success/error) to a JSONL log
+(`.sheets_agent/usage.jsonl` by default, override with `USAGE_LOG_PATH`). Cost is
+computed from a per-model pricing table in `sheets_agent/observability.py`.
+
+View the rolling totals and per-model / per-tool breakdown:
+
+```bash
+python -m sheets_agent.cli usage          # formatted view
+python -m sheets_agent.cli usage --json   # raw summary for scripts/dashboards
+```
+
 ## Tests
 
 ```bash
 python -m unittest discover -s tests
 ```
+
+Coverage: the tool layer (name-to-index resolution, zero-based structural
+indices, dropdown re-apply, audited cleanup counts) via a fake sheet client; the
+agent loop (forced structure read, confirm-before-delete guard) via a fake
+model; the model adapter mapping; and observability cost/summary math. None of
+the tests touch Google or the network.
 
 ## Acceptance checklist (v1)
 
