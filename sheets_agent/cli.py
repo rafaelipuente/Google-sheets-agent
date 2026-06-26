@@ -5,6 +5,7 @@
   python -m sheets_agent.cli structure        # pretty-print get_sheet_structure
   python -m sheets_agent.cli call <tool> '<json args>'  # hand-test any tool
   python -m sheets_agent.cli chat             # natural-language agent loop
+  python -m sheets_agent.cli usage            # cost / LLM / tool observability view
 """
 
 from __future__ import annotations
@@ -53,6 +54,47 @@ def cmd_call(args) -> None:
     _print(result)
 
 
+def cmd_usage(args) -> None:
+    from . import observability
+
+    events = observability.load_events(args.path)
+    summary = observability.summarize(events)
+    if args.json:
+        _print(summary)
+        return
+
+    print("Sheets Agent - usage & cost")
+    print(f"  log: {args.path or config.USAGE_LOG_PATH}")
+    if not events:
+        print("  (no usage recorded yet)")
+        return
+    print(f"  sessions:        {summary['sessions']}")
+    print(f"  LLM calls:       {summary['llm_calls']}")
+    print(f"  tool calls:      {summary['tool_calls']}")
+    print(
+        f"  tokens:          {summary['total_prompt_tokens']} in / "
+        f"{summary['total_completion_tokens']} out / {summary['total_tokens']} total"
+    )
+    print(f"  total cost:      ${summary['total_cost_usd']:.4f}")
+
+    if summary["by_model"]:
+        print("\n  by model:")
+        print(f"    {'model':<16}{'calls':>7}{'in tok':>10}{'out tok':>10}{'cost $':>12}")
+        for model, m in sorted(summary["by_model"].items()):
+            print(
+                f"    {model:<16}{m['calls']:>7}{m['prompt_tokens']:>10}"
+                f"{m['completion_tokens']:>10}{m['cost_usd']:>12.4f}"
+            )
+
+    if summary["by_tool"]:
+        print("\n  by tool:")
+        print(f"    {'tool':<22}{'calls':>7}{'errors':>8}{'ms total':>12}")
+        for tool, t in sorted(summary["by_tool"].items()):
+            print(
+                f"    {tool:<22}{t['calls']:>7}{t['errors']:>8}{t['duration_ms']:>12.1f}"
+            )
+
+
 def cmd_chat(_args) -> None:
     from .agent import Agent
 
@@ -88,6 +130,11 @@ def main(argv=None) -> None:
     call_p.set_defaults(func=cmd_call)
 
     sub.add_parser("chat", help="natural-language agent loop").set_defaults(func=cmd_chat)
+
+    usage_p = sub.add_parser("usage", help="cost / LLM / tool observability view")
+    usage_p.add_argument("--path", default=None, help="usage log path (JSONL)")
+    usage_p.add_argument("--json", action="store_true", help="print raw summary JSON")
+    usage_p.set_defaults(func=cmd_usage)
 
     args = parser.parse_args(argv)
     args.func(args)
