@@ -9,6 +9,7 @@ import unittest
 
 from sheets_agent.agent import Agent
 from sheets_agent.models.base import ModelResponse, ToolCall
+from sheets_agent.observability import UsageTracker
 
 
 def _assistant(tool_calls=None, content=None):
@@ -84,7 +85,8 @@ class AgentLoopTests(unittest.TestCase):
     def _agent(self, script):
         model = FakeModel(script)
         tools = FakeTools()
-        return Agent(tools=tools, model=model), tools, model
+        tracker = UsageTracker(in_memory=True)
+        return Agent(tools=tools, model=model, tracker=tracker), tools, model
 
     def test_append_flow_reads_structure_then_dispatches(self):
         tc = ToolCall(id="c1", name="append_row", arguments=json.dumps({"row": {"Company Name": "Rapta"}}))
@@ -98,6 +100,11 @@ class AgentLoopTests(unittest.TestCase):
         self.assertIn("12345", reply)  # click-through link uses sheet_id gid
         self.assertEqual(tools.appended, [{"Company Name": "Rapta"}])
         self.assertEqual(tools.structure_reads, 1)  # forced read at turn start
+        # Observability: two model turns and one tool call were recorded.
+        llm = [e for e in agent.tracker.events if e["type"] == "llm_call"]
+        tool = [e for e in agent.tracker.events if e["type"] == "tool_call"]
+        self.assertEqual(len(llm), 2)
+        self.assertEqual([e["tool"] for e in tool], ["append_row"])
 
     def test_confirmed_delete_without_plan_is_downgraded(self):
         # Model jumps straight to confirmed=True; guard must force a confirmation first.
