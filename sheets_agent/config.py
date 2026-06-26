@@ -18,6 +18,12 @@ SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
+# Where LLM/tool usage events are appended (JSONL) for the observability view.
+USAGE_LOG_PATH = os.getenv(
+    "USAGE_LOG_PATH",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".sheets_agent", "usage.jsonl"),
+)
+
 # Section 4.1: the single source of truth for the Application Status dropdown.
 CANONICAL_STATUS_OPTIONS = [
     "Not started",

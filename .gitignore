@@ -13,5 +13,9 @@ __pycache__/
 venv/
 .eggs/
 
+# Usage / observability logs
+.sheets_agent/
+usage.jsonl
+
 # OS
 .DS_Store
