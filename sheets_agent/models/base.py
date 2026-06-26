@@ -24,6 +24,10 @@ class ModelResponse:
     tool_calls: list[ToolCall] = field(default_factory=list)
     # The assistant message to append to history verbatim (provider-shaped).
     assistant_message: dict = field(default_factory=dict)
+    # Observability: model name, token usage, and call latency.
+    model: str | None = None
+    usage: dict = field(default_factory=dict)
+    latency_ms: float = 0.0
 
 
 class ToolCallingModel(ABC):

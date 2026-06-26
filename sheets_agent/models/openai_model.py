@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from .. import config
 from .base import ModelResponse, ToolCall, ToolCallingModel
 
@@ -25,18 +27,30 @@ class OpenAIModel(ToolCallingModel):
 
     def complete(self, messages: list[dict], tools: list[dict]) -> ModelResponse:
         client = self._ensure_client()
+        start = time.perf_counter()
         response = client.chat.completions.create(
             model=self.model,
             messages=messages,
             tools=tools,
         )
+        latency_ms = (time.perf_counter() - start) * 1000.0
         message = response.choices[0].message
         tool_calls = [
             ToolCall(id=c.id, name=c.function.name, arguments=c.function.arguments or "{}")
             for c in (message.tool_calls or [])
         ]
+        usage = {}
+        if getattr(response, "usage", None) is not None:
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            }
         return ModelResponse(
             content=message.content,
             tool_calls=tool_calls,
             assistant_message=message.model_dump(exclude_none=True),
+            model=self.model,
+            usage=usage,
+            latency_ms=latency_ms,
         )
