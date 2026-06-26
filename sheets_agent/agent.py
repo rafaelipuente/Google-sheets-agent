@@ -9,6 +9,7 @@ import json
 
 from . import config
 from .models import OpenAIModel, ToolCallingModel
+from .observability import UsageTracker, timer
 from .schemas import TOOL_SCHEMAS
 from .tools import SheetTools
 
@@ -51,9 +52,11 @@ class Agent:
         self,
         tools: SheetTools | None = None,
         model: ToolCallingModel | None = None,
+        tracker: UsageTracker | None = None,
     ) -> None:
         self.tools = tools or SheetTools()
         self.model = model or OpenAIModel()
+        self.tracker = tracker or UsageTracker()
         self.messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
         self._confirmed_columns: set[str] = set()
 
@@ -80,7 +83,14 @@ class Agent:
         self.messages.append({"role": "user", "content": prompt})
 
         while True:
-            response = self.model.complete(self.messages, TOOL_SCHEMAS)
+            with timer() as t:
+                response = self.model.complete(self.messages, TOOL_SCHEMAS)
+            self.tracker.record_llm_call(
+                model=response.model,
+                usage=response.usage,
+                latency_ms=response.latency_ms or t.ms,
+                num_tool_calls=len(response.tool_calls),
+            )
             self.messages.append(response.assistant_message)
 
             if not response.tool_calls:
@@ -91,10 +101,14 @@ class Agent:
             for call in response.tool_calls:
                 name = call.name
                 args = json.loads(call.arguments or "{}")
-                try:
-                    result = self._dispatch(name, args)
-                except Exception as exc:  # surface tool errors back to the model
-                    result = {"error": str(exc)}
+                with timer() as tt:
+                    try:
+                        result = self._dispatch(name, args)
+                        ok, err = True, None
+                    except Exception as exc:  # surface tool errors back to the model
+                        result = {"error": str(exc)}
+                        ok, err = False, str(exc)
+                self.tracker.record_tool_call(name, tt.ms, ok, err)
                 self.messages.append(
                     {
                         "role": "tool",
