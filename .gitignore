@@ -1,0 +1,17 @@
+# Secrets
+.env
+*.json
+!**/tools/*.json
+service-account*.json
+credentials*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.eggs/
+
+# OS
+.DS_Store
