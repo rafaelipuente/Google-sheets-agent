@@ -115,6 +115,17 @@ No grid rendering. No embedded sheet. The chat shows a confirmation or a diff li
 
 Why not embed the live sheet: Google blocks framing of the Sheets editor. Published-to-web embeds are read-only. So an editable Google grid inside your own app is not on the table. Method C sidesteps this entirely.
 
+### 6.1 The v1 interface: a local web chat page
+
+Method C is delivered as a minimal local web app, which is how the tool is actually run now.
+
+- **FastAPI app.** Serves a single static HTML chat page at `/`: a scrollable message list with a text input at the bottom. Plain HTML/CSS/JS, no framework.
+- **`POST /chat`.** Takes `{ "message": "..." }`, passes the message straight into the existing agent loop (the one that forces `get_sheet_structure`, lets the model chain tool calls, and returns the diff/confirmation text plus the sheet link), and returns `{ "reply": "...", "sheet_url": "..." }`. It reuses the agent code; it does not reimplement agent logic.
+- **Backend-held conversation state.** A single persistent agent instance keeps the message history server-side, so multi-turn flows work. In particular, the confirm-before-delete handshake survives across requests: the agent's "confirm?" reply shows in chat, and the user's next typed "yes"/"no" resolves it. Nothing auto-confirms.
+- **Run it.** `uvicorn sheets_agent.web:app --reload`, then open `http://localhost:8000`.
+
+"Next to my sheet" means two browser windows snapped side by side: the chat page in one, the real Google Sheet tab in the other. It is not an embedded sheet, for the framing reason above (Google blocks framing the live editable editor). The chat posts diffs/confirmations and a click-through link; the user eyeballs the rendered result in the adjacent Sheets window.
+
 Later (not v1): Method B renders the rows yourself in a grid component (AG Grid / Handsontable) for split-pane polish. Method A is a browser extension sidebar for an in-Sheets feel. Both deferred.
 
 ## 7. Tool layer
