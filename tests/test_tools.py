@@ -35,8 +35,8 @@ class FakeSheetClient:
 
     sheet_id = 999
 
-    def __init__(self):
-        self.grid = [list(HEADERS)] + [list(r) for r in DATA]
+    def __init__(self, grid=None):
+        self.grid = grid if grid is not None else [list(HEADERS)] + [list(r) for r in DATA]
         self.batch_requests = []
         self.updates = []
         self.ws = FakeWorksheet()
@@ -95,6 +95,28 @@ class ToolTests(unittest.TestCase):
     def test_append_row_rejects_unknown_column(self):
         with self.assertRaises(ValueError):
             self.tools.append_row({"Nope": "x"})
+
+    def test_append_row_fills_first_blank_company_name_row(self):
+        # Status column pre-filled with N/A, but Company Name is blank -> the
+        # row is available. New entry must land at row 2, not the bottom.
+        grid = [list(HEADERS)] + [["", "N/A", "", "", ""] for _ in range(5)]
+        tools = SheetTools(client=FakeSheetClient(grid=grid))
+        out = tools.append_row({"Company Name": "Rapta", "Role": "QA Tester"})
+        self.assertEqual(out["row_index"], 2)
+        # Existing Status "N/A" is preserved (no status was provided).
+        self.assertEqual(out["values"], ["Rapta", "N/A", "QA Tester", "", ""])
+
+    def test_append_row_overwrites_status_only_when_provided(self):
+        grid = [list(HEADERS)] + [["", "N/A", "", "", ""]]
+        tools = SheetTools(client=FakeSheetClient(grid=grid))
+        out = tools.append_row({"Company Name": "Rapta", "Application Status": "Applied"})
+        self.assertEqual(out["row_index"], 2)
+        self.assertEqual(out["values"][1], "Applied")
+
+    def test_append_row_falls_back_to_end_when_no_blank_anchor(self):
+        # All rows have Company Name filled -> append past the data.
+        out = self.tools.append_row({"Company Name": "Rapta"})
+        self.assertEqual(out["row_index"], 5)  # 1 header + 3 data + 1
 
     def test_add_column_uses_zero_based_insert_and_writes_header(self):
         self.tools.add_column("Date Applied", position=4)  # column D

@@ -41,21 +41,41 @@ class SheetTools:
         return {"updated_cells": updated, "range": a1}
 
     def append_row(self, row: dict[str, Any]) -> dict:
+        """Write a new entry into the first row whose Company Name (anchor,
+        column A) is blank; fall back to a true append if none is free.
+
+        The template pre-fills "N/A" in the Status column for hundreds of empty
+        rows, so emptiness is judged by Company Name only. Cells not supplied in
+        ``row`` (notably the Status dropdown) keep whatever value is already
+        there, rather than being blanked.
+        """
         headers = self.client.headers()
         index = {h.strip().lower(): i for i, h in enumerate(headers)}
-        ordered = [""] * len(headers)
-        unknown = []
-        for key, value in row.items():
-            pos = index.get(str(key).strip().lower())
-            if pos is None:
-                unknown.append(key)
-                continue
-            ordered[pos] = value
+        unknown = [k for k in row if str(k).strip().lower() not in index]
         if unknown:
             raise ValueError(
                 f"Unknown column(s) {unknown}. Current headers: {headers}"
             )
-        target_row = len(self.client.all_values()) + 1
+        provided = {index[str(k).strip().lower()]: v for k, v in row.items()}
+        anchor_idx = index.get("company name", 0)
+
+        values = self.client.all_values()
+        target_row = None
+        existing_row: list = []
+        for row_num, data in enumerate(values[1:], start=2):
+            anchor = data[anchor_idx] if anchor_idx < len(data) else ""
+            if not str(anchor).strip():
+                target_row, existing_row = row_num, data
+                break
+        if target_row is None:
+            target_row = len(values) + 1
+
+        ordered = [""] * len(headers)
+        for i in range(min(len(existing_row), len(headers))):
+            ordered[i] = existing_row[i]
+        for pos, value in provided.items():
+            ordered[pos] = value
+
         end = col_letter(len(headers) - 1)
         a1 = f"A{target_row}:{end}{target_row}"
         self.client.update_range(a1, [ordered])
