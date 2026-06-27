@@ -141,8 +141,9 @@ class SheetTools:
     ) -> dict:
         """Apply a ONE_OF_LIST dropdown to a column and reconcile stale values.
 
-        reconcile: "remap" stale values to a default, "clear" them, or
-        "report" only counts them.
+        reconcile defaults to "remap": stale values (e.g. the template's "N/A")
+        are rewritten to "Not started" in this same call -- never a separate
+        step (see SPEC.md 4.1). "clear" blanks them; "report" only counts them.
         """
         idx = self.client.column_index(column)
         self._apply_validation(idx, options)
