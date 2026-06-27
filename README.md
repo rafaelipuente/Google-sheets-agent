@@ -70,6 +70,17 @@ python -m sheets_agent.cli call remove_column '{"name": "Comp"}'           # ret
 python -m sheets_agent.cli call remove_column '{"name": "Comp", "confirmed": true}'
 ```
 
+## Web UI
+
+A minimal one-page chat to run beside your Google Sheet tab:
+
+```bash
+uvicorn sheets_agent.web:app --reload
+```
+
+Then open http://localhost:8000. Conversation state is kept on the backend, so
+confirming a delete with a follow-up "yes" works.
+
 ## Chat loop
 
 ```bash

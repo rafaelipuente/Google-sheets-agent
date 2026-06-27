@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sheets Agent</title>
+  <style>
+    :root {
+      --bg: #f7f7f8;
+      --panel: #ffffff;
+      --border: #e3e3e8;
+      --user: #2563eb;
+      --user-text: #ffffff;
+      --agent: #f0f1f3;
+      --agent-text: #1f2937;
+      --muted: #6b7280;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--agent-text);
+      display: flex;
+      justify-content: center;
+    }
+    .app {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      max-width: 720px;
+      height: 100vh;
+      background: var(--panel);
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+    }
+    header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 15px;
+    }
+    header small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; margin-top: 2px; }
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .msg { max-width: 85%; padding: 10px 13px; border-radius: 14px; line-height: 1.45; white-space: pre-wrap; word-wrap: break-word; }
+    .msg.user { align-self: flex-end; background: var(--user); color: var(--user-text); border-bottom-right-radius: 4px; }
+    .msg.agent { align-self: flex-start; background: var(--agent); color: var(--agent-text); border-bottom-left-radius: 4px; }
+    .msg.agent a { color: var(--user); }
+    .msg .link { display: block; margin-top: 8px; font-size: 13px; }
+    .msg.pending { color: var(--muted); font-style: italic; }
+    form {
+      display: flex;
+      gap: 8px;
+      padding: 12px;
+      border-top: 1px solid var(--border);
+      background: var(--panel);
+    }
+    #input {
+      flex: 1;
+      resize: none;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font: inherit;
+      max-height: 140px;
+    }
+    #input:focus { outline: none; border-color: var(--user); }
+    button {
+      padding: 0 18px;
+      border: none;
+      border-radius: 10px;
+      background: var(--user);
+      color: #fff;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: default; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      Sheets Agent
+      <small>Type a prompt. Confirm destructive changes with "yes" / "no".</small>
+    </header>
+    <div id="messages"></div>
+    <form id="form">
+      <textarea id="input" rows="1" placeholder="e.g. add Rapta, QA Tester, status applied" autofocus></textarea>
+      <button id="send" type="submit">Send</button>
+    </form>
+  </div>
+
+  <script>
+    const messagesEl = document.getElementById("messages");
+    const form = document.getElementById("form");
+    const input = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+
+    function addMessage(text, role, sheetUrl) {
+      const el = document.createElement("div");
+      el.className = "msg " + role;
+      el.textContent = text;
+      if (sheetUrl) {
+        const a = document.createElement("a");
+        a.href = sheetUrl;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.className = "link";
+        a.textContent = "Open the sheet \u2197";
+        el.appendChild(a);
+      }
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return el;
+    }
+
+    function autoGrow() {
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, 140) + "px";
+    }
+    input.addEventListener("input", autoGrow);
+
+    async function send(message) {
+      addMessage(message, "user");
+      const pending = addMessage("thinking\u2026", "agent pending");
+      sendBtn.disabled = true;
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        });
+        const data = await res.json();
+        pending.remove();
+        addMessage(data.reply || "(no reply)", "agent", data.sheet_url);
+      } catch (err) {
+        pending.remove();
+        addMessage("Network error: " + err, "agent");
+      } finally {
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    }
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const message = input.value.trim();
+      if (!message) return;
+      input.value = "";
+      autoGrow();
+      send(message);
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        form.requestSubmit();
+      }
+    });
+  </script>
+</body>
+</html>
