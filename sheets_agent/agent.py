@@ -61,7 +61,10 @@ class Agent:
         self._confirmed_columns: set[str] = set()
 
     def _structure_message(self) -> dict:
-        structure = self.tools.get_sheet_structure()
+        # The forced structure read is a system step, not a model tool call.
+        with timer() as t:
+            structure = self.tools.get_sheet_structure()
+        self.tracker.record_system_step("get_sheet_structure", t.ms)
         return {
             "role": "system",
             "content": "Current sheet structure:\n" + json.dumps(structure, indent=2),

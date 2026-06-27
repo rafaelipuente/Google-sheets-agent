@@ -100,11 +100,14 @@ class AgentLoopTests(unittest.TestCase):
         self.assertIn("12345", reply)  # click-through link uses sheet_id gid
         self.assertEqual(tools.appended, [{"Company Name": "Rapta"}])
         self.assertEqual(tools.structure_reads, 1)  # forced read at turn start
-        # Observability: two model turns and one tool call were recorded.
+        # Observability: two model turns, one tool call, and the forced
+        # structure read recorded as a distinct system step.
         llm = [e for e in agent.tracker.events if e["type"] == "llm_call"]
         tool = [e for e in agent.tracker.events if e["type"] == "tool_call"]
+        steps = [e for e in agent.tracker.events if e["type"] == "system_step"]
         self.assertEqual(len(llm), 2)
         self.assertEqual([e["tool"] for e in tool], ["append_row"])
+        self.assertEqual([e["step"] for e in steps], ["get_sheet_structure"])
 
     def test_confirmed_delete_without_plan_is_downgraded(self):
         # Model jumps straight to confirmed=True; guard must force a confirmation first.

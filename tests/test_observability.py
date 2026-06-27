@@ -65,15 +65,18 @@ class TrackerSummaryTests(unittest.TestCase):
             )
             tracker.record_tool_call("append_row", 3.2, ok=True)
             tracker.record_tool_call("remove_column", 1.0, ok=False, error="boom")
+            tracker.record_system_step("get_sheet_structure", 12.0)
 
             events = observability.load_events(path)
             summary = observability.summarize(events)
             self.assertEqual(summary["llm_calls"], 1)
-            self.assertEqual(summary["tool_calls"], 2)
+            self.assertEqual(summary["model_tool_calls"], 2)
+            self.assertEqual(summary["system_steps"], 1)
             self.assertEqual(summary["total_tokens"], 1500)
             self.assertAlmostEqual(summary["total_cost_usd"], 0.0075, places=6)
             self.assertEqual(summary["by_tool"]["remove_column"]["errors"], 1)
             self.assertEqual(summary["by_model"]["gpt-4o"]["calls"], 1)
+            self.assertEqual(summary["by_system_step"]["get_sheet_structure"]["count"], 1)
 
     def test_in_memory_tracker_writes_no_file(self):
         tracker = observability.UsageTracker(in_memory=True)

@@ -102,6 +102,20 @@ class UsageTracker:
         self._write(event)
         return event
 
+    def record_system_step(
+        self, step: str, duration_ms: float, detail: str | None = None
+    ) -> dict:
+        """A step the agent runs directly each turn (e.g. the forced
+        get_sheet_structure read), distinct from a model-emitted tool call."""
+        event = {
+            "type": "system_step",
+            "step": step,
+            "duration_ms": round(duration_ms, 1),
+            "detail": detail,
+        }
+        self._write(event)
+        return event
+
 
 class timer:
     """Context manager returning elapsed milliseconds via .ms."""
@@ -132,6 +146,7 @@ def summarize(events: list[dict]) -> dict:
     """Aggregate events into totals and per-model / per-tool breakdowns."""
     llm = [e for e in events if e.get("type") == "llm_call"]
     tools = [e for e in events if e.get("type") == "tool_call"]
+    steps = [e for e in events if e.get("type") == "system_step"]
 
     by_model: dict[str, dict] = defaultdict(
         lambda: {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0}
@@ -152,15 +167,23 @@ def summarize(events: list[dict]) -> dict:
         t["errors"] += 0 if e.get("ok", True) else 1
         t["duration_ms"] = round(t["duration_ms"] + e.get("duration_ms", 0.0), 1)
 
+    by_step: dict[str, dict] = defaultdict(lambda: {"count": 0, "duration_ms": 0.0})
+    for e in steps:
+        s = by_step[e.get("step") or "unknown"]
+        s["count"] += 1
+        s["duration_ms"] = round(s["duration_ms"] + e.get("duration_ms", 0.0), 1)
+
     sessions = {e.get("session") for e in events}
     return {
         "sessions": len([s for s in sessions if s]),
         "llm_calls": len(llm),
-        "tool_calls": len(tools),
+        "model_tool_calls": len(tools),
+        "system_steps": len(steps),
         "total_prompt_tokens": sum(e.get("prompt_tokens", 0) for e in llm),
         "total_completion_tokens": sum(e.get("completion_tokens", 0) for e in llm),
         "total_tokens": sum(e.get("total_tokens", 0) for e in llm),
         "total_cost_usd": round(sum(e.get("cost_usd", 0.0) for e in llm), 6),
         "by_model": {k: v for k, v in by_model.items()},
         "by_tool": {k: v for k, v in by_tool.items()},
+        "by_system_step": {k: v for k, v in by_step.items()},
     }

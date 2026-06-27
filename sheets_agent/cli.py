@@ -68,9 +68,10 @@ def cmd_usage(args) -> None:
     if not events:
         print("  (no usage recorded yet)")
         return
-    print(f"  sessions:        {summary['sessions']}")
-    print(f"  LLM calls:       {summary['llm_calls']}")
-    print(f"  tool calls:      {summary['tool_calls']}")
+    print(f"  sessions:          {summary['sessions']}")
+    print(f"  LLM calls:         {summary['llm_calls']}")
+    print(f"  model tool calls:  {summary['model_tool_calls']}")
+    print(f"  system steps:      {summary['system_steps']}")
     print(
         f"  tokens:          {summary['total_prompt_tokens']} in / "
         f"{summary['total_completion_tokens']} out / {summary['total_tokens']} total"
@@ -87,12 +88,18 @@ def cmd_usage(args) -> None:
             )
 
     if summary["by_tool"]:
-        print("\n  by tool:")
+        print("\n  by model tool call:")
         print(f"    {'tool':<22}{'calls':>7}{'errors':>8}{'ms total':>12}")
         for tool, t in sorted(summary["by_tool"].items()):
             print(
                 f"    {tool:<22}{t['calls']:>7}{t['errors']:>8}{t['duration_ms']:>12.1f}"
             )
+
+    if summary["by_system_step"]:
+        print("\n  by system step (run directly each turn, not model tool calls):")
+        print(f"    {'step':<22}{'count':>7}{'ms total':>12}")
+        for step, s in sorted(summary["by_system_step"].items()):
+            print(f"    {step:<22}{s['count']:>7}{s['duration_ms']:>12.1f}")
 
 
 def cmd_chat(_args) -> None:
