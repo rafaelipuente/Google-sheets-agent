@@ -130,7 +130,10 @@ Later (not v1): Method B renders the rows yourself in a grid component (AG Grid 
 
 ## 7. Tool layer
 
-Two tiers. Eight tools.
+Two tiers. The data tier reads and writes values (including editing and
+deleting existing entries); the schema tier reshapes columns and validation.
+(A `clean_placeholders` helper for audited placeholder normalization also lives
+in the data tier.)
 
 ### 7.1 Data tier
 
@@ -151,6 +154,18 @@ update_cells(a1: str, values: list[list]) -> {"updated_cells": int}
 append_row(row: dict) -> {"row_index": int}
     # row keyed by header NAME, e.g. {"Company Name": "Rapta", "Role": "QA Tester"}
     # tool maps names to current column positions internally
+    # fills the first row whose Company Name is blank (template pre-fills "N/A"
+    # in Status), preserving any existing cell not supplied; falls back to a
+    # true append when no blank-anchor row exists
+
+update_entry(company: str, updates: dict, row_index: int = None) -> {...}
+    # edit an existing entry located by Company Name; only supplied fields
+    # change, every other cell (including the Status dropdown) is left intact.
+    # If several rows share the name, returns the matches and asks for row_index.
+
+delete_row(company: str = None, row_index: int = None, confirmed: bool = False) -> {...}
+    # delete a whole row by Company Name (or row_index); refuses unless
+    # confirmed=True, returning a preview of the row first (see Safety).
 ```
 
 ### 7.2 Schema tier
@@ -212,7 +227,7 @@ Recreate a dropdown (whenever you add a status-like column or shift the existing
 
 ## 9. Safety: confirm before delete
 
-Destructive operations (column delete, and any future row delete) are gated behind a confirmation. The agent states the plan and waits.
+Destructive operations (column delete via `remove_column`, and row delete via `delete_row`) are gated behind a confirmation. The agent states the plan and waits.
 
 Example: user says "remove salary" -> agent responds "I'll delete column D 'Salary' and its 23 values. Confirm?" -> only on yes does `remove_column(name="Salary", confirmed=True)` run.
 

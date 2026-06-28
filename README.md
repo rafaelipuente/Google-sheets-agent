@@ -47,10 +47,12 @@ python -m sheets_agent.cli whoami
 
 ## The eight tools (plus a cleanup primitive)
 
-Data tier: `get_sheet_structure`, `read_range`, `update_cells`, `append_row`.
-Schema tier: `add_column`, `remove_column` (confirm-gated), `rename_column`,
-`set_column_validation`. Plus `clean_placeholders` for trustworthy, audited
-placeholder normalization. Every call is metered (see Observability below).
+Data tier: `get_sheet_structure`, `read_range`, `update_cells`, `append_row`,
+`update_entry` (edit an existing entry by Company Name), `delete_row`
+(confirm-gated). Schema tier: `add_column`, `remove_column` (confirm-gated),
+`rename_column`, `set_column_validation`. Plus `clean_placeholders` for
+trustworthy, audited placeholder normalization. Every call is metered (see
+Observability below).
 
 Two rules: name-to-index resolution lives in the tool layer (never the model),
 and the agent re-reads structure after every structural change so writes never
