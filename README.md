@@ -5,6 +5,15 @@ job-application tracker from prompts. The model decides what to change; this
 code performs the changes through the Google Sheets API. The model never touches
 the sheet directly.
 
+## Demo
+
+The web chat runs in a browser window snapped next to the live sheet. Prompts
+can preview a diff before applying, add columns, and append rows.
+
+![Chat UI beside the tracker, light mode](docs/demo-chat.png)
+
+![Same flow in dark mode](docs/demo-confirmation.png)
+
 ## Architecture
 
 ```
