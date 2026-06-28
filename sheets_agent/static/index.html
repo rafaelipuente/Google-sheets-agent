@@ -14,6 +14,21 @@
       --agent: #f0f1f3;
       --agent-text: #1f2937;
       --muted: #6b7280;
+      --ctrl-bg: #ececed;
+      --ctrl-text: #374151;
+      --font-scale: 1;
+    }
+    html.dark {
+      --bg: #17171b;
+      --panel: #222228;
+      --border: #393941;
+      --user: #3b82f6;
+      --user-text: #ffffff;
+      --agent: #2f2f37;
+      --agent-text: #e6e7eb;
+      --muted: #9aa0aa;
+      --ctrl-bg: #34343c;
+      --ctrl-text: #d7d9de;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
@@ -33,14 +48,32 @@
       background: var(--panel);
       border-left: 1px solid var(--border);
       border-right: 1px solid var(--border);
+      font-size: calc(16px * var(--font-scale));
     }
     header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
       padding: 14px 18px;
       border-bottom: 1px solid var(--border);
-      font-weight: 600;
-      font-size: 15px;
     }
-    header small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; margin-top: 2px; }
+    header .title { font-weight: 600; font-size: 0.95em; }
+    header small { display: block; color: var(--muted); font-weight: 400; font-size: 0.75em; margin-top: 2px; }
+    .controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .ctrl {
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--ctrl-bg);
+      color: var(--ctrl-text);
+      font: inherit;
+      font-size: 0.8em;
+      font-weight: 600;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .ctrl:hover { border-color: var(--user); }
     #messages {
       flex: 1;
       overflow-y: auto;
@@ -53,7 +86,7 @@
     .msg.user { align-self: flex-end; background: var(--user); color: var(--user-text); border-bottom-right-radius: 4px; }
     .msg.agent { align-self: flex-start; background: var(--agent); color: var(--agent-text); border-bottom-left-radius: 4px; }
     .msg.agent a { color: var(--user); }
-    .msg .link { display: block; margin-top: 8px; font-size: 13px; }
+    .msg .link { display: block; margin-top: 8px; font-size: 0.82em; }
     .msg.pending { color: var(--muted); font-style: italic; }
     form {
       display: flex;
@@ -69,10 +102,12 @@
       border: 1px solid var(--border);
       border-radius: 10px;
       font: inherit;
-      max-height: 140px;
+      background: var(--panel);
+      color: var(--agent-text);
+      max-height: 160px;
     }
     #input:focus { outline: none; border-color: var(--user); }
-    button {
+    #send {
       padding: 0 18px;
       border: none;
       border-radius: 10px;
@@ -82,14 +117,22 @@
       font-weight: 600;
       cursor: pointer;
     }
-    button:disabled { opacity: 0.5; cursor: default; }
+    #send:disabled { opacity: 0.5; cursor: default; }
   </style>
 </head>
 <body>
   <div class="app">
     <header>
-      Sheets Agent
-      <small>Type a prompt. Confirm destructive changes with "yes" / "no".</small>
+      <div class="title">
+        Sheets Agent
+        <small>Type a prompt. Confirm destructive changes with "yes" / "no".</small>
+      </div>
+      <div class="controls">
+        <button id="zoomOut" class="ctrl" type="button" title="Smaller text" aria-label="Decrease text size">A&minus;</button>
+        <button id="zoomReset" class="ctrl" type="button" title="Reset text size" aria-label="Reset text size">A</button>
+        <button id="zoomIn" class="ctrl" type="button" title="Larger text" aria-label="Increase text size">A+</button>
+        <button id="themeToggle" class="ctrl" type="button" title="Toggle dark mode" aria-label="Toggle dark mode">Dark</button>
+      </div>
     </header>
     <div id="messages"></div>
     <form id="form">
@@ -103,7 +146,34 @@
     const form = document.getElementById("form");
     const input = document.getElementById("input");
     const sendBtn = document.getElementById("send");
+    const themeToggle = document.getElementById("themeToggle");
 
+    // ---- preferences: dark mode + text zoom (persisted) ----
+    const MIN_SCALE = 0.8, MAX_SCALE = 1.8, STEP = 0.1;
+    let scale = parseFloat(localStorage.getItem("sa-scale")) || 1;
+
+    function applyScale() {
+      scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.round(scale * 10) / 10));
+      document.documentElement.style.setProperty("--font-scale", scale);
+      localStorage.setItem("sa-scale", scale);
+    }
+    function applyTheme(dark) {
+      document.documentElement.classList.toggle("dark", dark);
+      themeToggle.textContent = dark ? "Light" : "Dark";
+      localStorage.setItem("sa-theme", dark ? "dark" : "light");
+    }
+
+    applyScale();
+    applyTheme(localStorage.getItem("sa-theme") === "dark");
+
+    document.getElementById("zoomIn").addEventListener("click", () => { scale += STEP; applyScale(); });
+    document.getElementById("zoomOut").addEventListener("click", () => { scale -= STEP; applyScale(); });
+    document.getElementById("zoomReset").addEventListener("click", () => { scale = 1; applyScale(); });
+    themeToggle.addEventListener("click", () => {
+      applyTheme(!document.documentElement.classList.contains("dark"));
+    });
+
+    // ---- chat ----
     function addMessage(text, role, sheetUrl) {
       const el = document.createElement("div");
       el.className = "msg " + role;
@@ -124,7 +194,7 @@
 
     function autoGrow() {
       input.style.height = "auto";
-      input.style.height = Math.min(input.scrollHeight, 140) + "px";
+      input.style.height = Math.min(input.scrollHeight, 160) + "px";
     }
     input.addEventListener("input", autoGrow);
 
