@@ -14,6 +14,9 @@ from .schemas import TOOL_SCHEMAS
 from .tools import SheetTools
 
 STRUCTURAL_TOOLS = {"add_column", "remove_column", "rename_column", "set_column_validation"}
+DESTRUCTIVE_TOOLS = {"remove_column", "delete_row"}
+# Tools whose effect shifts indices/row counts; re-read structure afterwards.
+REREAD_AFTER = STRUCTURAL_TOOLS | {"delete_row"}
 
 SYSTEM_PROMPT = f"""You are a job-application tracker assistant operating on a single \
 Google Sheet tab. You change the sheet only by emitting tool calls; your code \
@@ -29,6 +32,13 @@ continue. Re-read it.
 WITHOUT confirmed to fetch its value count, state the plan to the user \
 ("I'll delete column D 'Salary' and its N values. Confirm?"), and only call \
 remove_column with confirmed=true after the user explicitly says yes.
+- The same confirm-first rule applies to delete_row: call it WITHOUT confirmed \
+to get a preview of the row, show it, and only call with confirmed=true after \
+an explicit yes.
+- To change an existing application (e.g. "set Google's status to Offer", \
+"update Rapta's salary"), use update_entry with the company name and only the \
+fields that change. Do not append a new row for an edit. If a company matches \
+several rows, ask the user which row_index to use.
 - For ambiguous prompts ("remove salary", "clean up column C"), state your \
 interpretation (delete the column vs clear its values) before acting.
 - The canonical Application Status options, in order, are: \
@@ -58,7 +68,7 @@ class Agent:
         self.model = model or OpenAIModel()
         self.tracker = tracker or UsageTracker()
         self.messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
-        self._confirmed_columns: set[str] = set()
+        self._confirmed_tokens: set[str] = set()
 
     def _structure_message(self) -> dict:
         # The forced structure read is a system step, not a model tool call.
@@ -70,14 +80,25 @@ class Agent:
             "content": "Current sheet structure:\n" + json.dumps(structure, indent=2),
         }
 
+    @staticmethod
+    def _confirm_token(name: str, args: dict) -> str:
+        if name == "remove_column":
+            return f"col:{str(args.get('name', '')).strip().lower()}"
+        if name == "delete_row":
+            key = args.get("row_index")
+            if key is None:
+                key = str(args.get("company", "")).strip().lower()
+            return f"row:{key}"
+        return name
+
     def _dispatch(self, name: str, args: dict):
         # Safety guard: never honor a confirmed delete the user never approved.
-        if name == "remove_column" and args.get("confirmed"):
-            if args.get("name") not in self._confirmed_columns:
+        if name in DESTRUCTIVE_TOOLS and args.get("confirmed"):
+            if self._confirm_token(name, args) not in self._confirmed_tokens:
                 args = {**args, "confirmed": False}
         result = getattr(self.tools, name)(**args)
-        if name == "remove_column" and result.get("needs_confirmation"):
-            self._confirmed_columns.add(args.get("name"))
+        if name in DESTRUCTIVE_TOOLS and result.get("needs_confirmation"):
+            self._confirmed_tokens.add(self._confirm_token(name, args))
         return result
 
     def send(self, prompt: str) -> str:
@@ -119,7 +140,7 @@ class Agent:
                         "content": json.dumps(result, default=str),
                     }
                 )
-                if name in STRUCTURAL_TOOLS and not result.get("needs_confirmation") and not result.get("error"):
+                if name in REREAD_AFTER and not result.get("needs_confirmation") and not result.get("error"):
                     did_structural = True
 
             if did_structural:

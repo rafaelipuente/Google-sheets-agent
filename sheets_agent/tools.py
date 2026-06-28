@@ -244,7 +244,128 @@ class SheetTools:
             "total_changed": sum(c.get("changed", 0) for c in audit.values()),
         }
 
+    def update_entry(
+        self,
+        company: str,
+        updates: dict[str, Any],
+        row_index: int | None = None,
+    ) -> dict:
+        """Update an existing entry, located by Company Name (the anchor).
+
+        Only the supplied fields change; every other cell (including the Status
+        dropdown) is left as-is. If several rows share the company name, returns
+        the matching row numbers and asks for a row_index instead of guessing.
+        """
+        headers = self.client.headers()
+        index = {h.strip().lower(): i for i, h in enumerate(headers)}
+        unknown = [k for k in updates if str(k).strip().lower() not in index]
+        if unknown:
+            raise ValueError(
+                f"Unknown column(s) {unknown}. Current headers: {headers}"
+            )
+
+        values = self.client.all_values()
+        target_row, existing = self._resolve_row(values, company, row_index)
+        if target_row is None:
+            return existing  # a needs_disambiguation / not-found payload
+
+        ordered = [""] * len(headers)
+        for i in range(min(len(existing), len(headers))):
+            ordered[i] = existing[i]
+        changed = {}
+        for key, value in updates.items():
+            pos = index[str(key).strip().lower()]
+            changed[headers[pos]] = {"from": ordered[pos], "to": value}
+            ordered[pos] = value
+
+        end = col_letter(len(headers) - 1)
+        self.client.update_range(f"A{target_row}:{end}{target_row}", [ordered])
+        return {"row_index": target_row, "company": company, "changed": changed}
+
+    def delete_row(
+        self,
+        company: str | None = None,
+        row_index: int | None = None,
+        confirmed: bool = False,
+    ) -> dict:
+        """Delete an entire row, located by Company Name or explicit row_index.
+
+        Destructive: refuses unless confirmed=True, returning a preview first.
+        """
+        values = self.client.all_values()
+        headers = self.client.headers()
+        target_row, existing = self._resolve_row(values, company, row_index)
+        if target_row is None:
+            return existing  # needs_disambiguation / not-found payload
+
+        preview = list(existing[: len(headers)])
+        if not confirmed:
+            return {
+                "needs_confirmation": True,
+                "row_index": target_row,
+                "company": company,
+                "values": preview,
+                "message": (
+                    f"This will delete row {target_row} ({preview}). "
+                    "Confirm to proceed."
+                ),
+            }
+        self.client.batch_update(
+            [
+                {
+                    "deleteDimension": {
+                        "range": {
+                            "sheetId": self.client.sheet_id,
+                            "dimension": "ROWS",
+                            "startIndex": target_row - 1,
+                            "endIndex": target_row,
+                        }
+                    }
+                }
+            ]
+        )
+        return {"deleted_row": target_row, "values": preview}
+
     # ---- internal -------------------------------------------------------
+
+    def _resolve_row(
+        self, values: list[list], company: str | None, row_index: int | None
+    ):
+        """Return (row_number, row_values). On ambiguity/not-found, returns
+        (None, payload) describing the problem for the model to relay."""
+        headers = self.client.headers()
+        if row_index is not None:
+            if 2 <= row_index <= len(values):
+                return row_index, values[row_index - 1]
+            return None, {
+                "error": f"Row {row_index} is out of range (sheet has {len(values)} rows).",
+            }
+        if not company:
+            return None, {"error": "Provide a company name or a row_index."}
+
+        anchor_idx = {h.strip().lower(): i for i, h in enumerate(headers)}.get(
+            "company name", 0
+        )
+        target = str(company).strip().lower()
+        matches = [
+            (row_num, row)
+            for row_num, row in enumerate(values[1:], start=2)
+            if (row[anchor_idx] if anchor_idx < len(row) else "").strip().lower() == target
+        ]
+        if not matches:
+            return None, {"error": f"No entry with Company Name '{company}' found."}
+        if len(matches) > 1:
+            rows = [m[0] for m in matches]
+            return None, {
+                "needs_disambiguation": True,
+                "company": company,
+                "matching_rows": rows,
+                "message": (
+                    f"Multiple rows match '{company}': rows {rows}. "
+                    "Specify which with row_index."
+                ),
+            }
+        return matches[0]
 
     def _apply_validation(self, col_idx: int, options: list[str]) -> None:
         self.client.batch_update(

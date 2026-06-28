@@ -72,6 +72,56 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "update_entry",
+            "description": (
+                "Update an existing entry located by Company Name. Only the "
+                "supplied fields change; other cells (including Status) are "
+                "left intact. e.g. set Google's status to Offer: "
+                "company='Google', updates={'Application Status': 'Offer'}. "
+                "If several rows share the name, pass row_index to pick one."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company": {"type": "string", "description": "Company Name to find."},
+                    "updates": {
+                        "type": "object",
+                        "description": "Map of header name -> new value.",
+                        "additionalProperties": True,
+                    },
+                    "row_index": {
+                        "type": "integer",
+                        "description": "Optional 1-based row to disambiguate duplicates.",
+                    },
+                },
+                "required": ["company", "updates"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_row",
+            "description": (
+                "Delete an entire row by Company Name (or row_index). "
+                "Destructive: first call WITHOUT confirmed to get a preview, "
+                "show it to the user, then call again with confirmed=true only "
+                "after an explicit yes."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company": {"type": "string"},
+                    "row_index": {"type": "integer", "description": "1-based row number."},
+                    "confirmed": {"type": "boolean", "default": False},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "add_column",
             "description": (
                 "Insert a new column at a 1-based position (A=1). Pass "
