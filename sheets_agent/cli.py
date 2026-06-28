@@ -103,7 +103,9 @@ def cmd_usage(args) -> None:
 
 
 def cmd_chat(_args) -> None:
-    from .agent import Agent
+    import logging
+
+    from .agent import Agent, AgentError
 
     agent = Agent()
     print("Sheets agent ready. Type a prompt, or 'exit'.")
@@ -119,8 +121,14 @@ def cmd_chat(_args) -> None:
             continue
         try:
             print(agent.send(prompt))
-        except Exception as exc:
-            print(f"Error: {exc}")
+        except AgentError as exc:
+            print(exc.user_message)
+        except Exception:
+            logging.getLogger("sheets_agent").exception("Unexpected error in chat")
+            print(
+                "Something went wrong (details logged). No changes were saved — "
+                "retry, or open the sheet to check."
+            )
 
 
 def main(argv=None) -> None:

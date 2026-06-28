@@ -78,6 +78,7 @@ class SheetTools:
 
         end = col_letter(len(headers) - 1)
         a1 = f"A{target_row}:{end}{target_row}"
+        # Whole row written in one update call -> atomic, no half-written row.
         self.client.update_range(a1, [ordered])
         return {"row_index": target_row, "values": ordered}
 
@@ -279,8 +280,14 @@ class SheetTools:
             ordered[pos] = value
 
         end = col_letter(len(headers) - 1)
+        # Whole row written in one update call -> atomic, no half-written row.
         self.client.update_range(f"A{target_row}:{end}{target_row}", [ordered])
-        return {"row_index": target_row, "company": company, "changed": changed}
+        return {
+            "row_index": target_row,
+            "company": company,
+            "changed": changed,
+            "values": ordered,
+        }
 
     def delete_row(
         self,

@@ -9,6 +9,7 @@ The agent logic is reused as-is; this module only wraps it in HTTP.
 
 from __future__ import annotations
 
+import logging
 import os
 
 from fastapi import FastAPI
@@ -16,6 +17,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from . import config
+
+log = logging.getLogger("sheets_agent")
 
 app = FastAPI(title="Sheets Agent")
 
@@ -47,12 +50,24 @@ def index() -> FileResponse:
 
 @app.post("/chat")
 def chat(body: ChatIn) -> dict:
+    from .agent import AgentError
+
     try:
         agent = _get_agent()
         raw = agent.send(body.message)
         sheet_url = config.sheet_url(agent.tools.client.sheet_id)
-    except Exception as exc:
-        return {"reply": f"Error: {exc}", "sheet_url": config.sheet_url()}
+    except AgentError as exc:
+        # Friendly, phase-aware message (traceback already logged by the agent).
+        return {"reply": exc.user_message, "sheet_url": config.sheet_url()}
+    except Exception:
+        log.exception("Unexpected error handling /chat")
+        return {
+            "reply": (
+                "Something went wrong handling that request (details logged to the "
+                "server). No changes were saved — retry, or open the sheet to check."
+            ),
+            "sheet_url": config.sheet_url(),
+        }
 
     reply = raw
     if _SHEET_MARKER in raw:
