@@ -109,7 +109,10 @@ class AgentLoopTests(unittest.TestCase):
         ]
         agent, tools, _ = self._agent(script)
         reply = agent.send("add Rapta")
-        self.assertIn("Appended row 4", reply)
+        # Deterministic confirmation replaces the model's free-text diff.
+        self.assertIn("row 4", reply)
+        self.assertIn("Company Name: Rapta", reply)
+        self.assertIn("Updated in Google Sheets", reply)
         self.assertIn("12345", reply)  # click-through link uses sheet_id gid
         self.assertEqual(tools.appended, [{"Company Name": "Rapta"}])
         self.assertEqual(tools.structure_reads, 1)  # forced read at turn start
@@ -161,6 +164,45 @@ class AgentLoopTests(unittest.TestCase):
         agent.send("yes")
         self.assertEqual(tools.deleted, [("row", "Google")])
         self.assertEqual(tools.calls[-1], ("delete_row", "Google", True))
+
+    def test_success_confirmation_echoes_every_field(self):
+        from sheets_agent import config
+
+        headers = [
+            "Company Name", "Application Status", "Role", "Salary",
+            "Date Submitted", "Link to Job Req", "Rejection Reason", "Notes",
+        ]
+        values = [
+            "Rapta", "Applied", "QA Tester", "$120k",
+            "June 27", "http://jobs/rapta", "N/A", "Talked to Sam; follow up Fri",
+        ]
+
+        class FullTools(FakeTools):
+            def get_sheet_structure(self):
+                self.structure_reads += 1
+                return {
+                    "headers": headers, "num_rows": 2, "num_cols": len(headers),
+                    "sheet_id": self.client.sheet_id, "sample_rows": [],
+                    "validations": {},
+                }
+
+            def append_row(self, row):
+                self.appended.append(row)
+                return {"row_index": 2, "values": values}
+
+        tc = ToolCall(id="c1", name="append_row", arguments=json.dumps({"row": {"Company Name": "Rapta"}}))
+        script = [
+            ModelResponse(content=None, tool_calls=[tc], assistant_message=_assistant([tc])),
+            ModelResponse(content="done", tool_calls=[], assistant_message=_assistant(content="done")),
+        ]
+        agent = Agent(tools=FullTools(), model=FakeModel(script), tracker=UsageTracker(in_memory=True))
+        reply = agent.send("add Rapta")
+
+        # Every populated field is echoed back.
+        for header, value in zip(headers, values):
+            self.assertIn(f"{header}: {value}", reply)
+        # Source-of-truth marker: sheet name, row number, and a timestamp.
+        self.assertIn(f"Updated in Google Sheets · {config.WORKSHEET_NAME} · row 2", reply)
 
 
 if __name__ == "__main__":
