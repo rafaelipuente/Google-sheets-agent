@@ -162,6 +162,47 @@ class ToolTests(unittest.TestCase):
         self.assertEqual(out["audit"]["Rejection Reason"]["changed"], 1)
         self.assertEqual(out["total_changed"], 3)
 
+    def test_update_entry_changes_only_supplied_fields(self):
+        out = self.tools.update_entry("Beta", {"Application Status": "Offer"})
+        self.assertEqual(out["row_index"], 3)  # Beta is the 2nd data row
+        self.assertEqual(out["changed"]["Application Status"], {"from": "Applied", "to": "Offer"})
+        written = self.client.updates[-1][1][0]
+        self.assertEqual(written[0], "Beta")  # Company Name preserved
+        self.assertEqual(written[1], "Offer")  # status updated
+        self.assertEqual(written[2], "PM")     # role left intact
+
+    def test_update_entry_unknown_company_errors(self):
+        out = self.tools.update_entry("Nonexistent", {"Role": "x"})
+        self.assertIn("error", out)
+
+    def test_update_entry_rejects_unknown_field(self):
+        with self.assertRaises(ValueError):
+            self.tools.update_entry("Beta", {"Nope": "x"})
+
+    def test_delete_row_requires_confirmation(self):
+        out = self.tools.delete_row(company="Beta")
+        self.assertTrue(out["needs_confirmation"])
+        self.assertEqual(out["row_index"], 3)
+        self.assertEqual(self.client.batch_requests, [])  # nothing deleted yet
+
+    def test_delete_row_confirmed_uses_zero_based_row(self):
+        out = self.tools.delete_row(company="Gamma", confirmed=True)
+        req = self.client.batch_requests[0][0]["deleteDimension"]["range"]
+        self.assertEqual(req["dimension"], "ROWS")
+        self.assertEqual(req["startIndex"], 3)  # Gamma is sheet row 4 -> 0-based 3
+        self.assertEqual(req["endIndex"], 4)
+        self.assertEqual(out["deleted_row"], 4)
+
+    def test_duplicate_company_asks_for_disambiguation(self):
+        grid = [list(HEADERS)] + [
+            ["Dup", "Applied", "A", "", ""],
+            ["Dup", "Offer", "B", "", ""],
+        ]
+        tools = SheetTools(client=FakeSheetClient(grid=grid))
+        out = tools.delete_row(company="Dup")
+        self.assertTrue(out["needs_disambiguation"])
+        self.assertEqual(out["matching_rows"], [2, 3])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

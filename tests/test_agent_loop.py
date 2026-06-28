@@ -80,6 +80,19 @@ class FakeTools:
         self.deleted.append(name)
         return {"removed": name, "deleted_values": 2}
 
+    def delete_row(self, company=None, row_index=None, confirmed=False):
+        self.calls.append(("delete_row", company, confirmed))
+        if not confirmed:
+            return {
+                "needs_confirmation": True,
+                "company": company,
+                "row_index": 2,
+                "values": ["X"],
+                "message": "This will delete row 2. Confirm?",
+            }
+        self.deleted.append(("row", company))
+        return {"deleted_row": 2, "values": ["X"]}
+
 
 class AgentLoopTests(unittest.TestCase):
     def _agent(self, script):
@@ -129,6 +142,25 @@ class AgentLoopTests(unittest.TestCase):
         second = agent.send("yes")
         self.assertEqual(tools.deleted, ["Salary"])  # only deletes after approval
         self.assertEqual(tools.calls[-1], ("remove_column", "Salary", True))
+
+    def test_confirmed_delete_row_without_plan_is_downgraded(self):
+        c1 = ToolCall(id="r1", name="delete_row", arguments=json.dumps({"company": "Google", "confirmed": True}))
+        c2 = ToolCall(id="r2", name="delete_row", arguments=json.dumps({"company": "Google", "confirmed": True}))
+        script = [
+            ModelResponse(content=None, tool_calls=[c1], assistant_message=_assistant([c1])),
+            ModelResponse(content="Delete row 2 (Google)? Confirm.", tool_calls=[], assistant_message=_assistant(content="confirm?")),
+            ModelResponse(content=None, tool_calls=[c2], assistant_message=_assistant([c2])),
+            ModelResponse(content="Deleted.", tool_calls=[], assistant_message=_assistant(content="done")),
+        ]
+        agent, tools, _ = self._agent(script)
+        first = agent.send("delete the Google row")
+        self.assertIn("Confirm", first)
+        self.assertEqual(tools.deleted, [])  # guard forced a confirmation first
+        self.assertEqual(tools.calls[0], ("delete_row", "Google", False))
+
+        agent.send("yes")
+        self.assertEqual(tools.deleted, [("row", "Google")])
+        self.assertEqual(tools.calls[-1], ("delete_row", "Google", True))
 
 
 if __name__ == "__main__":
