@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 
 from .. import config
+from ..retry import with_retry
 from .base import ModelResponse, ToolCall, ToolCallingModel
 
 
@@ -28,10 +29,14 @@ class OpenAIModel(ToolCallingModel):
     def complete(self, messages: list[dict], tools: list[dict]) -> ModelResponse:
         client = self._ensure_client()
         start = time.perf_counter()
-        response = client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            tools=tools,
+        # Retry transient connection drops; openai's own 4xx errors are not retried.
+        response = with_retry(
+            lambda: client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                tools=tools,
+            ),
+            label="OpenAI chat completion",
         )
         latency_ms = (time.perf_counter() - start) * 1000.0
         message = response.choices[0].message

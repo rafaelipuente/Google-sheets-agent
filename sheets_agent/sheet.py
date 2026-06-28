@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import auth, config
+from .retry import with_retry
 
 
 def col_letter(index_zero_based: int) -> str:
@@ -23,34 +24,45 @@ def col_letter(index_zero_based: int) -> str:
 class SheetClient:
     def __init__(self) -> None:
         self.gc, self.service = auth.build_clients()
-        self.spreadsheet = self.gc.open_by_key(config.SPREADSHEET_ID)
-        self.ws = self.spreadsheet.worksheet(config.WORKSHEET_NAME)
+        self.spreadsheet = with_retry(
+            lambda: self.gc.open_by_key(config.SPREADSHEET_ID), label="open spreadsheet"
+        )
+        self.ws = with_retry(
+            lambda: self.spreadsheet.worksheet(config.WORKSHEET_NAME),
+            label="open worksheet",
+        )
         self.sheet_id: int = self.ws.id  # numeric gid, not the tab name
 
     # ---- values ops (gspread) -------------------------------------------
 
     def headers(self) -> list[str]:
-        row = self.ws.row_values(1)
+        row = with_retry(lambda: self.ws.row_values(1), label="read headers")
         return [h for h in row]
 
     def all_values(self) -> list[list[str]]:
-        return self.ws.get_all_values()
+        return with_retry(self.ws.get_all_values, label="read all values")
 
     def read_range(self, a1: str) -> list[list[str]]:
-        return self.ws.get(a1)
+        return with_retry(lambda: self.ws.get(a1), label="read range")
 
     def update_range(self, a1: str, values: list[list[Any]]) -> int:
-        result = self.ws.update(a1, values, value_input_option="USER_ENTERED")
+        # One values.update call writes the entire range in a single request,
+        # so a row write is atomic -- it cannot leave a half-written row.
+        result = with_retry(
+            lambda: self.ws.update(a1, values, value_input_option="USER_ENTERED"),
+            label="write range",
+        )
         return int(result.get("updatedCells", 0))
 
     # ---- structure (raw API) --------------------------------------------
 
     def batch_update(self, requests: list[dict]) -> dict:
         body = {"requests": requests}
-        return (
-            self.service.spreadsheets()
+        return with_retry(
+            lambda: self.service.spreadsheets()
             .batchUpdate(spreadsheetId=config.SPREADSHEET_ID, body=body)
-            .execute()
+            .execute(),
+            label="batch update",
         )
 
     def column_index(self, name: str) -> int:
@@ -72,15 +84,16 @@ class SheetClient:
         headers = self.headers()
         if not headers:
             return {}
-        resp = (
-            self.service.spreadsheets()
+        resp = with_retry(
+            lambda: self.service.spreadsheets()
             .get(
                 spreadsheetId=config.SPREADSHEET_ID,
                 ranges=[f"{config.WORKSHEET_NAME}!A2:{col_letter(len(headers) - 1)}2"],
                 includeGridData=True,
                 fields="sheets(data(rowData(values(dataValidation))))",
             )
-            .execute()
+            .execute(),
+            label="read validations",
         )
         validations: dict[str, list[str]] = {}
         try:
